@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var CFG = window.CHOMPER_CONFIG || {};
-  var CLOUD = !!(CFG.supabaseUrl && CFG.anonKey);
+  var CLOUD = !!(CFG.supabaseUrl && CFG.anonKey) && !/[?&]local=1/.test(location.search);   // ?local=1 forces local mode (testing)
   var TABLE = CFG.table || 'chomper_scores';
   var LIMIT = 25, SHOWN = 10;
   var LS_ROWS = 'chomper-local-scores', LS_NAME = 'chomper-name', LS_BEST = 'chomper-best';
@@ -21,8 +21,8 @@
     for (var k in extra) h[k] = extra[k];
     return h;
   }
-  function cloudFetch(scope) {
-    var q = '?select=id,name,score,level,created_at&order=score.desc,created_at.asc&limit=' + LIMIT;
+  function cloudFetch(scope, limit) {
+    var q = '?select=id,name,score,level,created_at&order=score.desc,created_at.asc&limit=' + (limit || LIMIT);
     if (scope === 'today') q += '&created_at=gte.' + utcMidnight().toISOString();
     return fetch(CFG.supabaseUrl + '/rest/v1/' + TABLE + q, { headers: hdrs({ Prefer: 'count=exact' }) })
       .then(function (r) {
@@ -31,12 +31,12 @@
         return r.json().then(function (rows) { return { rows: rows, total: isFinite(total) ? total : rows.length }; });
       });
   }
-  function localFetch(scope) {
+  function localFetch(scope, limit) {
     var all = lsGet(LS_ROWS, []).slice().sort(function (a, b) { return b.score - a.score || (a.created_at < b.created_at ? -1 : 1); });
     if (scope === 'today') { var m = utcMidnight().toISOString(); all = all.filter(function (r) { return r.created_at >= m; }); }
-    return Promise.resolve({ rows: all.slice(0, LIMIT), total: all.length });
+    return Promise.resolve({ rows: all.slice(0, limit || LIMIT), total: all.length });
   }
-  function fetchScope(scope) { return CLOUD ? cloudFetch(scope) : localFetch(scope); }
+  function fetchScope(scope, limit) { return CLOUD ? cloudFetch(scope, limit) : localFetch(scope, limit); }
 
   function submitScore(name, score, level) {
     if (CLOUD) {
@@ -204,9 +204,9 @@
         return refresh().then(function () {
           var rt2 = null, d = state.data.today; if (d) d.rows.forEach(function (r, i) { if (r.id === row.id) rt2 = i + 1; });
           ov.querySelector('.entry').innerHTML = '<div class="go ok">SCORE SUBMITTED</div><div class="big">' + fmt(score) + '</div>' +
-            '<div class="sub">' + (rt2 ? 'You are <b>#' + rt2 + '</b> on today\'s board' : 'Saved to the board') + '</div><div class="btns"><button class="btn primary" id="againBtn">Play again</button></div>';
+            '<div class="sub">' + (rt2 ? 'You are <b>#' + rt2 + '</b> on today\'s board' : 'Saved to the board') + '</div><div class="btns"><button class="btn primary" id="againBtn">Play again</button><button class="btn" id="swarmBtn">Watch it drop in</button></div>';
           confetti(ov, rt2 && rt2 <= 3 ? 90 : 40);
-          $('againBtn').onclick = function () { close(true); }; setTimeout(function () { var b = $('againBtn'); if (b) b.focus(); }, 450);
+          $('againBtn').onclick = function () { close(true); }; $('swarmBtn').onclick = function () { close(false); document.dispatchEvent(new CustomEvent('chomp:swarm')); }; setTimeout(function () { var b = $('againBtn'); if (b) b.focus(); }, 450);
         });
       }).catch(function () { submitted = false; sub.disabled = false; sub.textContent = 'Submit score'; $('nameErr').textContent = 'Could not save. Check your connection and try again.'; });
     }
@@ -227,6 +227,7 @@
 
   window.PMBoard = {
     init: init, refresh: refresh, showEntry: showEntry, onUpdate: null, cloud: CLOUD,
+    swarm: function (limit) { return fetchScope('all', limit); }, youId: function () { return state.you ? state.you.id : null; },
     highScore: function () { var a = state.data.all && state.data.all.rows[0]; return Math.max(a ? a.score : 0, lsGet(LS_BEST, 0)); },
     clearYou: function () { state.you = null; render(); }
   };

@@ -7,6 +7,11 @@ A faithful arcade maze chase (own code and vector art, no original assets) with 
   Not included: the cut-scenes and the level-256 kill screen.
 - Controls: arrow keys or WASD, `P` pause, `M` mute. Swipe or the on-screen pad on phones.
 
+## Score Swarm
+The **SCORE SWARM** tab shows every submitted score as a ball inside a giant Pac-Man (area ~ score, color = level reached,
+white ring = played today, gold = #1). Balls are pulled to the middle and fill the shape as scores arrive; drag and fling
+any ball, hover or click for details. Top 600 scores are shown. Physics lives in `swarm.js` (pure logic), drawing in `swarmview.js`.
+
 ## Turn on the shared leaderboard (Supabase)
 1. Supabase dashboard > SQL Editor > paste `supabase.sql` > Run.
 2. Project Settings > API: copy the project URL and the `anon` public key into `config.js`.

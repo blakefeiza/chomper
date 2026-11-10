@@ -4,19 +4,41 @@
   var $ = function (id) { return document.getElementById(id); };
   var canvas = $('game'), cab = $('cab'), stage = $('stage');
   var renderer = null, game = null, ui = { mode: 'title', highScore: 0 };
-  var paused = false, acc = 0, last = 0, endTimer = null;
+  var paused = false, acc = 0, last = 0, endTimer = null, viewMode = 'play';
   var KEYS = { ArrowUp: 0, ArrowLeft: 1, ArrowDown: 2, ArrowRight: 3, w: 0, a: 1, s: 2, d: 3, W: 0, A: 1, S: 2, D: 3 };
 
   // ---------- layout: fit the cabinet beside (or above) the board ----------
   function layout() {
-    var boardEl = $('board'), narrow = window.innerWidth < 820;
-    var availW = narrow ? window.innerWidth - 24 : stage.clientWidth - 24;
-    var availH = narrow ? Math.min(window.innerHeight * 0.92, 1000) : stage.clientHeight - 24;
+    var narrow = window.innerWidth < 820, views = $('views');
+    var availW = narrow ? window.innerWidth - 24 : views.clientWidth;
+    var availH = narrow ? Math.min(window.innerHeight * 0.9 - 50, 1000) : views.clientHeight;
     var w = Math.max(200, Math.min(availW, availH * 224 / 288));
     cab.style.width = Math.floor(w) + 'px'; cab.style.height = Math.floor(w * 288 / 224) + 'px';
-    if (renderer) renderer.resize();
+    var sw = $('swarm'); sw.style.height = narrow ? Math.round(Math.min(window.innerWidth * 1.34, 780)) + 'px' : ''; 
+    if (renderer && viewMode === 'play') renderer.resize();
     document.documentElement.style.setProperty('--u', (w / 224) + 'px');   // one logical game pixel, used for overlay text sizing
+    moveThumb();
   }
+  function moveThumb() {
+    var b = viewMode === 'play' ? $('modePlay') : $('modeSwarm'), t = $('segThumb');
+    t.style.left = b.offsetLeft + 'px'; t.style.width = b.offsetWidth + 'px';
+  }
+  function setMode(m) {
+    if (m === viewMode) return;
+    viewMode = m;
+    $('modePlay').classList.toggle('on', m === 'play'); $('modeSwarm').classList.toggle('on', m === 'swarm');
+    if (m === 'swarm') {
+      if (game && game.state === 'playing' && !paused) togglePause();
+      PMAudio.loop('off');
+      cab.style.display = 'none'; $('swarm').hidden = false; layout(); PMSwarmView.show();
+    } else {
+      PMSwarmView.hide(); $('swarm').hidden = true; cab.style.display = ''; layout();
+    }
+    moveThumb();
+  }
+  $('modePlay').onclick = function () { setMode('play'); };
+  $('modeSwarm').onclick = function () { setMode('swarm'); };
+  document.addEventListener('chomp:swarm', function () { setMode('swarm'); });
 
   // ---------- flow ----------
   function startGame() {
@@ -68,6 +90,7 @@
   function dirKey(e) { return Object.prototype.hasOwnProperty.call(KEYS, e.key) ? KEYS[e.key] : -1; }
   window.addEventListener('keydown', function (e) {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (viewMode === 'swarm') { if (e.key === 'm' || e.key === 'M') toggleMute(); return; }
     var d = dirKey(e);
     if (d >= 0) { e.preventDefault(); if (game && game.state !== 'over') game.setDir(d); else if (ui.mode === 'title' && !$('overlay').classList.contains('on')) startGame(); return; }
     if (e.key === 'Enter' || e.key === ' ') {
@@ -105,6 +128,7 @@
     renderer = new PMRender.Renderer(canvas);
     layout();
     PMBoard.init();
+    PMBoard.onUpdate = function () { if (viewMode === 'swarm') PMSwarmView.refresh(); };
     window.addEventListener('resize', layout);
     if (window.ResizeObserver) new ResizeObserver(layout).observe(stage);
     requestAnimationFrame(frame);
@@ -112,5 +136,5 @@
   var fontReady = document.fonts && document.fonts.load ? document.fonts.load('8px "Press Start 2P"').catch(function () {}) : Promise.resolve();
   Promise.race([fontReady, new Promise(function (r) { setTimeout(r, 1500); })]).then(boot);
 
-  window.__chomper = { get game() { return game; }, start: startGame, ui: ui };   // handy for debugging
+  window.__chomper = { get game() { return game; }, start: startGame, ui: ui, setMode: setMode };   // handy for debugging
 })();

@@ -13,6 +13,11 @@
 <body>
   <div id="app">
     <main id="stage">
+      <nav id="modebar" aria-label="View">
+        <div class="seg"><div id="segThumb"></div>
+          <button id="modePlay" class="on">PLAY</button><button id="modeSwarm">SCORE SWARM</button></div>
+      </nav>
+      <div id="views">
       <div id="cab">
         <canvas id="game" aria-label="Chomper game"></canvas>
         <div class="scan"></div>
@@ -22,6 +27,17 @@
           <button data-d="0">&#9650;</button><button data-d="1">&#9664;</button><button data-d="3">&#9654;</button><button data-d="2">&#9660;</button>
         </div>
         <button id="mute" title="Sound on / off (M)" aria-label="Toggle sound">&#128266;</button>
+      </div>
+      <section id="swarm" hidden aria-label="Score swarm: every submitted score as a ball inside a giant Pac-Man">
+        <div class="sw-head">
+          <div><h2>SCORE SWARM</h2><p>Every score ever submitted is a ball. Drag one, fling it, watch the pile react.</p></div>
+          <div class="sw-stat"><b id="swCount">0 scores</b><div class="meter"><i id="swFillBar"></i></div><span id="swFillTxt">0% full</span></div>
+        </div>
+        <div id="swWrap"><canvas id="swCanvas"></canvas><div id="swTip"></div>
+          <div id="swHint">Still filling up. Every submitted score adds a ball.</div>
+          <div id="swEmpty"><div><b>The swarm is empty.</b><span>Finish a game and your ball drops in first.</span></div></div></div>
+        <div id="swLegend"></div>
+      </section>
       </div>
     </main>
 
@@ -51,6 +67,8 @@
   <script src="render.js"></script>
   <script src="audio.js"></script>
   <script src="board.js"></script>
+  <script src="swarm.js"></script>
+  <script src="swarmview.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
