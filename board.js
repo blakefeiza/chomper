@@ -14,10 +14,17 @@
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 
+  // Publishable keys (sb_publishable_...) are not JWTs: send them as apikey only. Legacy anon keys (JWTs) also go in Authorization.
+  function hdrs(extra) {
+    var h = { apikey: CFG.anonKey };
+    if (CFG.anonKey.indexOf('sb_') !== 0) h.Authorization = 'Bearer ' + CFG.anonKey;
+    for (var k in extra) h[k] = extra[k];
+    return h;
+  }
   function cloudFetch(scope) {
     var q = '?select=id,name,score,level,created_at&order=score.desc,created_at.asc&limit=' + LIMIT;
     if (scope === 'today') q += '&created_at=gte.' + utcMidnight().toISOString();
-    return fetch(CFG.supabaseUrl + '/rest/v1/' + TABLE + q, { headers: { apikey: CFG.anonKey, Authorization: 'Bearer ' + CFG.anonKey, Prefer: 'count=exact' } })
+    return fetch(CFG.supabaseUrl + '/rest/v1/' + TABLE + q, { headers: hdrs({ Prefer: 'count=exact' }) })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         var cr = r.headers.get('content-range') || '', total = parseInt(cr.split('/')[1], 10);
@@ -35,7 +42,7 @@
     if (CLOUD) {
       return fetch(CFG.supabaseUrl + '/rest/v1/' + TABLE, {
         method: 'POST',
-        headers: { apikey: CFG.anonKey, Authorization: 'Bearer ' + CFG.anonKey, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        headers: hdrs({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
         body: JSON.stringify({ name: name, score: score, level: level })
       }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (a) { return a[0]; });
     }
