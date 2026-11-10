@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Chomper - Arcade Maze Game with a Live Leaderboard</title>
+  <meta name="description" content="A faithful arcade maze chase with a daily and all-time leaderboard.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <main id="stage">
+      <div id="cab">
+        <canvas id="game" aria-label="Chomper game"></canvas>
+        <div class="scan"></div>
+        <div id="pause" class="pause">PAUSED<small>Press P to resume</small></div>
+        <div id="overlay"></div>
+        <div id="dpad" aria-hidden="true">
+          <button data-d="0">&#9650;</button><button data-d="1">&#9664;</button><button data-d="3">&#9654;</button><button data-d="2">&#9660;</button>
+        </div>
+        <button id="mute" title="Sound on / off (M)" aria-label="Toggle sound">&#128266;</button>
+      </div>
+    </main>
+
+    <aside id="board">
+      <header>
+        <svg class="trophy" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v4a5 5 0 0 1-10 0V3zM5 4H3v2a4 4 0 0 0 4 4M19 4h2v2a4 4 0 0 1-4 4M12 12v4M8 21h8M10 16h4v5h-4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="ttl"><h1>HALL OF FAME</h1><span id="modeChip" class="chip">LOCAL</span></div>
+      </header>
+      <div class="tabs" role="tablist">
+        <div id="tabThumb"></div>
+        <button id="tabToday" class="on" role="tab">TODAY</button>
+        <button id="tabAll" role="tab">ALL TIME</button>
+      </div>
+      <div id="resetRow">Daily board resets in <b id="resetIn">--:--:--</b> <span>UTC</span></div>
+      <div class="stats">
+        <div><span id="stGames">-</span><label id="gamesLabel">GAMES TODAY</label></div>
+        <div><span id="stTop">-</span><label>TOP SCORE</label></div>
+        <div><span id="stBest">-</span><label>YOUR BEST</label></div>
+      </div>
+      <div id="boardBody"></div>
+      <footer>Viz by <b>Blake Feiza</b> &nbsp;&middot;&nbsp; Inspired by the 1980 arcade classic</footer>
+    </aside>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="engine.js"></script>
+  <script src="render.js"></script>
+  <script src="audio.js"></script>
+  <script src="board.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
