@@ -33,6 +33,14 @@
           <div><h2>SCORE SWARM</h2><p>Every score ever submitted is a ball. Drag one, fling it, watch the pile react.</p></div>
           <div class="sw-stat"><b id="swCount">0 scores</b><div class="meter"><i id="swFillBar"></i></div><span id="swFillTxt">0% full</span></div>
         </div>
+        <div class="sw-tools">
+          <div class="sw-find">
+            <input id="swSearch" type="search" placeholder="Find a player" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Find a player">
+            <button id="swMine" class="chip" type="button" aria-pressed="false" hidden>Mine</button>
+            <button id="swToday" class="chip" type="button" aria-pressed="false">Played today</button>
+          </div>
+          <div id="swFocus" class="sw-focus" hidden></div>
+        </div>
         <div id="swWrap"><canvas id="swCanvas"></canvas><div id="swTip"></div>
           <div id="swHint">Still filling up. Every submitted score adds a ball.</div>
           <div id="swEmpty"><div><b>The swarm is empty.</b><span>Finish a game and your ball drops in first.</span></div></div></div>

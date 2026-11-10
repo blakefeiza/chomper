@@ -11,6 +11,9 @@
   ];
   var GOLD = { color: '#ffd23f', dark: true };
   function levelStyle(l) { for (var i = 0; i < LEVELS.length; i++) if (l <= LEVELS[i].max) return LEVELS[i]; return LEVELS[LEVELS.length - 1]; }
+  var ACC = '#7cf3ff';   // highlight color for the focused player
+  function levelIndex(l) { for (var i = 0; i < LEVELS.length; i++) if (l <= LEVELS[i].max) return i; return LEVELS.length - 1; }
+  function keyOf(name) { return String(name).toUpperCase().replace(/\s+/g, ' ').trim(); }   // names are the only identity, so same name = same player
   function fmt(n) { return Number(n).toLocaleString('en-US'); }
   function compact(n) { return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : String(n); }
   function ago(iso) {
@@ -36,7 +39,7 @@
   }
 
   var S = { world: null, ctx: null, w: 0, h: 0, dpr: 1, active: false, raf: 0, last: 0, acc: 0, rows: [], total: 0, ranks: {}, topId: null,
-    hover: null, selected: null, queue: [], effects: [], loaded: false, midnight: utcMidnight(), pointer: { x: 0, y: 0, in: false }, down: null, trail: [], timer: 0, t: 0 };
+    hover: null, selected: null, players: {}, focus: null, query: '', tier: null, todayOnly: false, queue: [], effects: [], loaded: false, midnight: utcMidnight(), pointer: { x: 0, y: 0, in: false }, down: null, trail: [], timer: 0, t: 0 };
 
   function geometry() {
     var wrap = $('swWrap'), r = wrap.getBoundingClientRect(), w = Math.max(200, Math.floor(r.width)), h = Math.max(200, Math.floor(r.height));
@@ -58,11 +61,17 @@
   function sync(rows, total) {
     S.rows = rows; S.total = total; S.midnight = utcMidnight();
     S.ranks = {}; rows.forEach(function (r, i) { S.ranks[r.id] = i + 1; }); S.topId = rows.length ? rows[0].id : null;
+    S.players = {};
+    rows.forEach(function (r) {
+      r.k = keyOf(r.name);
+      var pl = S.players[r.k] || (S.players[r.k] = { key: r.k, name: r.name, count: 0, total: 0, best: 0, bestId: null });
+      pl.count++; pl.total += r.score; if (r.score > pl.best) { pl.best = r.score; pl.bestId = r.id; }
+    });
     var ids = {}; rows.forEach(function (r) { ids[r.id] = r; });
     S.world.bodies.slice().forEach(function (b) { if (!ids[b.id]) { if (S.selected === b) S.selected = null; if (S.hover === b) S.hover = null; S.world.remove(b.id); } else b.data = ids[b.id]; });
     var fresh = S.loaded;       // after the first load, new rows pop in right away; the first load is staggered
     rows.forEach(function (r) { if (!S.world.byId[r.id]) { if (fresh) ensureBody(r, true); else S.queue.push(r); } });
-    S.loaded = true; stats();
+    S.loaded = true; stats(); renderFocus(); updateMine();
   }
   function stats() {
     var cap = S.total > LIMIT ? ' (top ' + LIMIT + ' shown)' : '';
@@ -97,6 +106,78 @@
     c.restore();
   }
 
+  // ---------- highlighting ----------
+  function filter() {      // null when nothing is highlighted
+    var key = S.focus, hov = S.world.drag || S.hover;
+    if (!key && !S.query && S.tier == null && !S.todayOnly && hov) key = hov.data.k;     // hover previews that player
+    if (!key && !S.query && S.tier == null && !S.todayOnly) return null;
+    return { key: key, fn: pred(key) };
+  }
+  function pred(key) {
+    return function (row) {
+      return (!key || row.k === key) && (!S.query || row.k.indexOf(S.query) >= 0) &&
+        (S.tier == null || levelIndex(row.level) === S.tier) && (!S.todayOnly || row.created_at >= S.midnight);
+    };
+  }
+  function drawPath(c, list) {
+    if (list.length < 2) return;
+    var pts = list.slice().sort(function (a, b) { return a.data.created_at < b.data.created_at ? -1 : 1; });
+    c.save(); c.lineJoin = 'round'; c.lineCap = 'round'; c.strokeStyle = ACC; c.globalAlpha = pts.length > 12 ? 0.4 : 0.7; c.lineWidth = 2; c.shadowColor = ACC; c.shadowBlur = 10;
+    c.setLineDash([7, 6]); c.lineDashOffset = REDUCED ? 0 : -S.t * 22;
+    c.beginPath(); pts.forEach(function (b, i) { if (i) c.lineTo(b.x, b.y); else c.moveTo(b.x, b.y); }); c.stroke(); c.restore();
+  }
+  function paintBall(c, b, youId, faded, F) {
+    var row = b.data, st = b.id === S.topId ? GOLD : levelStyle(row.level), r = b.r, t = S.t, w = S.world;
+    if (r < 0.5) return;
+    var hot = b === S.hover || b === S.selected || b === w.drag, rr = r * (hot ? 1.05 : 1);
+    if (faded) { c.save(); c.globalAlpha = 0.16; c.drawImage(sprite(st.color), b.x - rr, b.y - rr, rr * 2, rr * 2); c.restore(); return; }
+    c.drawImage(sprite(st.color), b.x - rr, b.y - rr, rr * 2, rr * 2);
+    if (row.created_at >= S.midnight) {
+      c.save(); c.globalAlpha = REDUCED ? 0.7 : 0.45 + 0.35 * Math.sin(t * 3 + (b.id % 7)); c.strokeStyle = '#ffffff'; c.lineWidth = Math.max(1.4, r * 0.07);
+      c.beginPath(); c.arc(b.x, b.y, rr + 1.8, 0, 7); c.stroke(); c.restore();
+    }
+    if (b.id === youId) { c.save(); c.shadowColor = '#ffe100'; c.shadowBlur = 16; c.strokeStyle = '#ffe100'; c.lineWidth = Math.max(2.4, r * 0.11); c.beginPath(); c.arc(b.x, b.y, rr + 3, 0, 7); c.stroke(); c.restore(); }
+    if (F) { c.save(); c.strokeStyle = ACC; c.lineWidth = Math.max(2, r * 0.09); c.shadowColor = ACC; c.shadowBlur = 12; c.beginPath(); c.arc(b.x, b.y, rr + 4.5, 0, 7); c.stroke(); c.restore(); }
+    if (hot) { c.save(); c.strokeStyle = '#fff'; c.lineWidth = 2.5; c.shadowColor = '#fff'; c.shadowBlur = 12; c.beginPath(); c.arc(b.x, b.y, rr + 1, 0, 7); c.stroke(); c.restore(); }
+    var lb = labelFor(b);
+    if (lb) {
+      var fs = Math.max(8, Math.min(r * 0.52, 22)); c.font = '800 ' + fs + 'px ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", system-ui, sans-serif';
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = st.dark ? '#0b1030' : '#ffffff';
+      if (!st.dark) { c.shadowColor = 'rgba(0,0,40,.55)'; c.shadowBlur = 3; }
+      c.fillText(lb.score, b.x, b.y - (lb.name ? fs * 0.3 : 0));
+      if (lb.name) { c.font = '700 ' + Math.max(7, fs * 0.5) + 'px -apple-system, "Segoe UI", system-ui, sans-serif'; c.globalAlpha = 0.85; c.fillText(lb.name.length > 9 ? lb.name.slice(0, 8) + '.' : lb.name, b.x, b.y + fs * 0.62); c.globalAlpha = 1; }
+      c.shadowBlur = 0;
+    }
+  }
+
+  // ---------- focus bar, search, filters ----------
+  function playerSummary(p) {
+    return '<b>' + esc(p.name) + '</b> ' + p.count + (p.count === 1 ? ' score' : ' scores') + ' &middot; best ' + fmt(p.best) + ' (#' + (S.ranks[p.bestId] || '-') + ') &middot; total ' + compact(p.total);
+  }
+  function matches() { return Object.keys(S.players).filter(function (k) { return k.indexOf(S.query) >= 0; }).map(function (k) { return S.players[k]; }); }
+  function renderFocus() {
+    var el = $('swFocus'); if (!el) return;
+    var parts = [], p, m;
+    if (S.focus) { p = S.players[S.focus]; parts.push(p ? playerSummary(p) : '<b>' + esc(S.focus) + '</b> has no scores in view yet'); }
+    else if (S.query) { m = matches(); parts.push(!m.length ? 'No player matches &ldquo;' + esc(S.query) + '&rdquo;' : m.length === 1 ? playerSummary(m[0]) : '<b>' + m.length + ' players</b> match &ldquo;' + esc(S.query) + '&rdquo;'); }
+    if (S.tier != null) parts.push('Only <b>' + LEVELS[S.tier].label + '</b>');
+    if (S.todayOnly) parts.push('Only <b>played today</b>');
+    if (parts.length) { var fn = pred(S.focus), n = 0; S.rows.forEach(function (r) { if (fn(r)) n++; }); parts.push('<span class="cnt">' + n + ' of ' + S.rows.length + ' shown</span>'); }
+    el.hidden = !parts.length;
+    el.innerHTML = parts.length ? parts.join(' <span class="dot">&middot;</span> ') + ' <button type="button" class="xbtn" id="swClear">Clear</button>' : '';
+    if (parts.length) $('swClear').onclick = clearAll;
+    $('swToday').setAttribute('aria-pressed', S.todayOnly ? 'true' : 'false');
+    var mine = $('swMine'); if (mine) mine.setAttribute('aria-pressed', S.focus && S.focus === myKey() ? 'true' : 'false');
+    [].forEach.call(document.querySelectorAll('#swLegend .lgb'), function (b) { b.setAttribute('aria-pressed', S.tier === +b.getAttribute('data-tier') ? 'true' : 'false'); });
+  }
+  function clearAll() { S.focus = null; S.query = ''; S.tier = null; S.todayOnly = false; S.selected = null; $('swSearch').value = ''; renderFocus(); }
+  function myName() { try { return localStorage.getItem('chomper-name') || ''; } catch (e) { return ''; } }
+  function myKey() { var n = myName(); return n ? keyOf(n) : ''; }
+  function updateMine() {
+    var n = myName(), b = $('swMine'); if (!b) return;
+    b.hidden = !n; if (n) b.textContent = 'Mine (' + n + ')';
+  }
+
   function labelFor(b) {
     var r = b.r, s = b.data.score, txt = fmt(s);
     if (r < 11) return null;
@@ -108,28 +189,11 @@
     c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, S.w, S.h);
     drawShape(c, w);
     var bodies = w.bodies.slice().sort(function (a, b) { return b.r - a.r; }), i;   // small balls on top of big ones
-    var youId = PMBoard.youId();
-    for (i = 0; i < bodies.length; i++) {
-      var b = bodies[i], row = b.data, st = b.id === S.topId ? GOLD : levelStyle(row.level), r = b.r;
-      if (r < 0.5) continue;
-      var hot = b === S.hover || b === S.selected || b === w.drag, rr = r * (hot ? 1.05 : 1);
-      c.drawImage(sprite(st.color), b.x - rr, b.y - rr, rr * 2, rr * 2);
-      if (row.created_at >= S.midnight) {
-        c.save(); c.globalAlpha = REDUCED ? 0.7 : 0.45 + 0.35 * Math.sin(t * 3 + (b.id % 7)); c.strokeStyle = '#ffffff'; c.lineWidth = Math.max(1.4, r * 0.07);
-        c.beginPath(); c.arc(b.x, b.y, rr + 1.8, 0, 7); c.stroke(); c.restore();
-      }
-      if (b.id === youId) { c.save(); c.shadowColor = '#ffe100'; c.shadowBlur = 16; c.strokeStyle = '#ffe100'; c.lineWidth = Math.max(2.4, r * 0.11); c.beginPath(); c.arc(b.x, b.y, rr + 3, 0, 7); c.stroke(); c.restore(); }
-      if (hot) { c.save(); c.strokeStyle = '#fff'; c.lineWidth = 2.5; c.shadowColor = '#fff'; c.shadowBlur = 12; c.beginPath(); c.arc(b.x, b.y, rr + 1, 0, 7); c.stroke(); c.restore(); }
-      var lb = labelFor(b);
-      if (lb) {
-        var fs = Math.max(8, Math.min(r * 0.52, 22)); c.font = '800 ' + fs + 'px ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", system-ui, sans-serif';
-        c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = st.dark ? '#0b1030' : '#ffffff';
-        if (!st.dark) { c.shadowColor = 'rgba(0,0,40,.55)'; c.shadowBlur = 3; }
-        c.fillText(lb.score, b.x, b.y - (lb.name ? fs * 0.3 : 0));
-        if (lb.name) { c.font = '700 ' + Math.max(7, fs * 0.5) + 'px -apple-system, "Segoe UI", system-ui, sans-serif'; c.globalAlpha = 0.85; c.fillText(lb.name.length > 9 ? lb.name.slice(0, 8) + '.' : lb.name, b.x, b.y + fs * 0.62); c.globalAlpha = 1; }
-        c.shadowBlur = 0;
-      }
-    }
+    var youId = PMBoard.youId(), F = filter(), dim = [], lit = [];
+    for (i = 0; i < bodies.length; i++) (F && !F.fn(bodies[i].data) ? dim : lit).push(bodies[i]);
+    for (i = 0; i < dim.length; i++) paintBall(c, dim[i], youId, true, F);                 // everything not highlighted fades back
+    if (F && F.key) drawPath(c, lit);                                                      // a player's scores, joined in the order they were played
+    for (i = 0; i < lit.length; i++) paintBall(c, lit[i], youId, false, F);
     var tb = S.topId != null ? w.byId[S.topId] : null;   // crown last, so smaller balls never cover it
     if (tb && tb.r > 14) { c.font = Math.max(12, tb.r * 0.6) + 'px serif'; c.textAlign = 'center'; c.textBaseline = 'bottom'; c.fillStyle = '#ffd23f'; c.shadowColor = '#ffd23f'; c.shadowBlur = 8; c.fillText('\u265B', tb.x, tb.y - tb.r - 1); c.shadowBlur = 0; }
     // arrival bursts
@@ -147,11 +211,12 @@
     var tip = $('swTip'), w = S.world, b = w.drag ? null : (S.selected || S.hover);
     if (!b) { tip.classList.remove('on'); return; }
     var row = b.data, st = b.id === S.topId ? GOLD : levelStyle(row.level), rk = S.ranks[row.id];
-    var key = row.id + '|' + (b === S.selected ? 1 : 0);
+    var key = row.id + '|' + (b === S.selected ? 1 : 0) + '|' + (S.players[row.k] ? S.players[row.k].count : 0);
     if (tip._key !== key) {
       tip._key = key;
       tip.innerHTML = '<div class="tn"><i style="background:' + st.color + '"></i>' + esc(row.name) + (rk === 1 ? ' <span class="crown">&#9819;</span>' : '') + '</div>' +
         '<div class="ts">' + fmt(row.score) + '</div><div class="tm">Level ' + row.level + ' &middot; ' + ago(row.created_at) + (rk ? ' &middot; #' + rk + ' all time' : '') + '</div>' +
+        (S.players[row.k] && S.players[row.k].count > 1 ? '<div class="tp"><b>' + S.players[row.k].count + ' scores</b> by ' + esc(S.players[row.k].name) + ' &middot; best ' + fmt(S.players[row.k].best) + '</div>' : '') +
         (row.created_at >= S.midnight ? '<div class="tt">Played today</div>' : '');
     }
     var tw = tip.offsetWidth || 160, th = tip.offsetHeight || 80;
@@ -177,7 +242,7 @@
   function onDown(e) {
     var p = pos(e); S.pointer.x = p.x; S.pointer.y = p.y; S.pointer.in = true;
     var b = S.world.pick(p.x, p.y);
-    if (!b) { S.selected = null; return; }
+    if (!b) { S.selected = null; S.focus = null; renderFocus(); return; }
     e.preventDefault(); $('swCanvas').setPointerCapture(e.pointerId);
     S.down = { x: p.x, y: p.y, t: performance.now(), moved: false, body: b }; S.trail = [];
     S.world.beginDrag(b, p.x, p.y); $('swCanvas').style.cursor = 'grabbing';
@@ -196,7 +261,11 @@
     var d = S.down, now = performance.now(), vx = 0, vy = 0;
     if (S.trail.length > 1) { var a = S.trail[0], z = S.trail[S.trail.length - 1], dtt = Math.max(16, z.t - a.t) / 1000; vx = (z.x - a.x) / dtt; vy = (z.y - a.y) / dtt; }
     S.world.endDrag(vx, vy);
-    if (!d.moved && now - d.t < 500) S.selected = (S.selected === d.body) ? null : d.body;
+    if (!d.moved && now - d.t < 500) {
+      if (S.selected === d.body) { S.selected = null; S.focus = null; }
+      else { S.selected = d.body; S.focus = d.body.data.k; S.query = ''; $('swSearch').value = ''; }
+      renderFocus();
+    }
     S.down = null; S.trail = []; $('swCanvas').style.cursor = 'grab';
     try { $('swCanvas').releasePointerCapture(e.pointerId); } catch (x) {}
   }
@@ -211,9 +280,17 @@
     cv.addEventListener('pointerdown', onDown); cv.addEventListener('pointermove', onMove); cv.addEventListener('pointerup', onUp);
     cv.addEventListener('pointercancel', onUp); cv.addEventListener('pointerleave', onLeave);
     if (window.ResizeObserver) new ResizeObserver(function () { if (S.active) geometry(); }).observe($('swWrap'));
-    var lg = LEVELS.map(function (l) { return '<span><i style="background:' + l.color + '"></i>' + l.label + '</span>'; }).join('');
+    var lg = LEVELS.map(function (l, i) { return '<button type="button" class="lgb" data-tier="' + i + '" aria-pressed="false"><i style="background:' + l.color + '"></i>' + l.label + '</button>'; }).join('');
     $('swLegend').innerHTML = '<div class="lg-row"><b>Color</b>' + lg + '<span><i style="background:' + GOLD.color + '"></i>#1</span></div>' +
       '<div class="lg-row"><b>Size</b><span>bigger score, bigger ball</span><b>Ring</b><span><i class="ring"></i>played today</span></div>';
+    $('swLegend').addEventListener('click', function (e) {
+      var b = e.target.closest('.lgb'); if (!b) return; var i = +b.getAttribute('data-tier'); S.tier = S.tier === i ? null : i; renderFocus();
+    });
+    $('swSearch').addEventListener('input', function () { S.query = keyOf(this.value); S.focus = null; S.selected = null; renderFocus(); });
+    $('swToday').onclick = function () { S.todayOnly = !S.todayOnly; renderFocus(); };
+    $('swMine').onclick = function () { var k = myKey(); if (!k) return; S.focus = S.focus === k ? null : k; S.query = ''; S.selected = null; $('swSearch').value = ''; renderFocus(); };
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.active) clearAll(); });
+    updateMine(); renderFocus();
   }
   function show() {
     init(); S.active = true; geometry(); S.last = 0; S.acc = 0;

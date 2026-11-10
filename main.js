@@ -14,7 +14,7 @@
     var availH = narrow ? Math.min(window.innerHeight * 0.9 - 50, 1000) : views.clientHeight;
     var w = Math.max(200, Math.min(availW, availH * 224 / 288));
     cab.style.width = Math.floor(w) + 'px'; cab.style.height = Math.floor(w * 288 / 224) + 'px';
-    var sw = $('swarm'); sw.style.height = narrow ? Math.round(Math.min(window.innerWidth * 1.34, 780)) + 'px' : ''; 
+    var sw = $('swarm'); sw.style.height = narrow ? Math.round(Math.min(window.innerWidth * 1.34 + 90, 880)) + 'px' : ''; 
     if (renderer && viewMode === 'play') renderer.resize();
     document.documentElement.style.setProperty('--u', (w / 224) + 'px');   // one logical game pixel, used for overlay text sizing
     moveThumb();
