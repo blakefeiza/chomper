@@ -44,18 +44,33 @@
         method: 'POST',
         headers: hdrs({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
         body: JSON.stringify({ name: name, score: score, level: level })
-      }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (a) { return a[0]; });
+      }).then(function (r) {
+        if (r.ok) return r.json();
+        return r.text().then(function (t) { throw new Error(/name_not_allowed/.test(t) ? 'NAME' : 'HTTP ' + r.status); });
+      }).then(function (a) { return a[0]; });
     }
     var rows = lsGet(LS_ROWS, []), row = { id: 'l' + Date.now(), name: name, score: score, level: level, created_at: new Date().toISOString() };
     rows.push(row); lsSet(LS_ROWS, rows); return Promise.resolve(row);
   }
 
-  var BAD = ['fuck', 'shit', 'cunt', 'nigg', 'fagg', 'dick', 'cock', 'bitch', 'whore', 'rape', 'nazi', 'slut', 'twat', 'pussy', 'asshole'];
+  // Mirrors the database rules in supabase.sql (the database is the real enforcement; this gives instant feedback).
+  var STRONG = ['fuck', 'fvck', 'shit', 'cunt', 'nigg', 'fagg', 'bitch', 'whore', 'slut', 'twat', 'pussy', 'wanker', 'jizz', 'blowjob', 'asshole', 'nazi', 'hitler', 'rapist', 'kkk', 'porn', 'cocksuck', 'dicksuck'];
+  var WHOLE = ['ass', 'arse', 'anus', 'anal', 'tit', 'tits', 'boob', 'boobs', 'cum', 'cock', 'dick', 'dik', 'penis', 'vagina', 'sex', 'rape', 'fag', 'dyke', 'tranny', 'retard', 'retarded', 'spic', 'kike', 'coon', 'chink', 'paki', 'hoe', 'kys', 'milf', 'thot', 'wank'];
+  function rep(w) { return w.replace(/(.)/g, '$1+'); }
+  function nameAllowed(s) {
+    var norm = String(s).toLowerCase().replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't');
+    var compact = norm.replace(/[^a-z]/g, ''), toks = norm.split(/[ _.\-]+/).map(function (t) { return t.replace(/[^a-z]/g, ''); }), i, j;
+    for (i = 0; i < STRONG.length; i++) if (new RegExp(rep(STRONG[i])).test(compact)) return false;
+    for (i = 0; i < WHOLE.length; i++) {
+      var re = new RegExp('^' + rep(WHOLE[i]) + '$');
+      if (re.test(compact)) return false;
+      for (j = 0; j < toks.length; j++) if (re.test(toks[j])) return false;
+    }
+    return true;
+  }
   function cleanName(s) {
     s = String(s || '').toUpperCase().replace(/[^A-Z0-9 _\-.]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10);
-    var norm = s.toLowerCase().replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/[^a-z]/g, '');
-    for (var i = 0; i < BAD.length; i++) if (norm.indexOf(BAD[i]) >= 0) return null;
-    return s;
+    return nameAllowed(s) ? s : null;
   }
 
   // ---------- small helpers ----------
@@ -208,7 +223,7 @@
           confetti(ov, rt2 && rt2 <= 3 ? 90 : 40);
           $('againBtn').onclick = function () { close(true); }; $('swarmBtn').onclick = function () { close(false); document.dispatchEvent(new CustomEvent('chomp:swarm')); }; setTimeout(function () { var b = $('againBtn'); if (b) b.focus(); }, 450);
         });
-      }).catch(function () { submitted = false; sub.disabled = false; sub.textContent = 'Submit score'; $('nameErr').textContent = 'Could not save. Check your connection and try again.'; });
+      }).catch(function (e) { submitted = false; sub.disabled = false; sub.textContent = 'Submit score'; $('nameErr').textContent = e && e.message === 'NAME' ? 'Pick a different name.' : 'Could not save. Check your connection and try again.'; });
     }
     if (sub) sub.onclick = doSubmit; skip.onclick = function () { close(score <= 0); };
     if (nameIn) { nameIn.addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); doSubmit(); } }); setTimeout(function () { nameIn.focus(); nameIn.select(); }, 60); }
